@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import type { Device, Geofence, Alert, AlertType, AlertSeverity, DeviceGroup, DeviceThresholds, TrackData, TrackPoint, StayPoint, TrackSegment, HealthDataPoint, DeviceHealth, HealthSummary } from '../types';
 
 function generateId(prefix: string) {
@@ -57,7 +57,10 @@ export const useIotStore = defineStore('iot', () => {
   ]);
   const selectedFenceId = ref<string | null>(null);
   const editMode = ref<'none' | 'draw-circle' | 'draw-polygon' | 'edit'>('none');
+  // 明确选中的设备（点击）：驱动地图定位、弹窗与列表定位，跨面板保持
   const highlightedDeviceId = ref<string | null>(null);
+  // 临时悬停的设备（mouseenter/mouseleave）：仅做视觉强调，不影响选中状态
+  const hoveredDeviceId = ref<string | null>(null);
   const isRegisteringDevice = ref(false);
   const registrationLocation = ref<{ lat: number; lng: number } | null>(null);
 
@@ -173,6 +176,20 @@ export const useIotStore = defineStore('iot', () => {
   function setHighlightedDevice(id: string | null) {
     highlightedDeviceId.value = id;
   }
+
+  function setHoveredDevice(id: string | null) {
+    hoveredDeviceId.value = id;
+  }
+
+  // 设备被删除后，清理指向它的选中/悬停状态，避免残留旧目标高亮
+  watch(devices, (list) => {
+    if (highlightedDeviceId.value && !list.some(d => d.id === highlightedDeviceId.value)) {
+      highlightedDeviceId.value = null;
+    }
+    if (hoveredDeviceId.value && !list.some(d => d.id === hoveredDeviceId.value)) {
+      hoveredDeviceId.value = null;
+    }
+  }, { deep: true });
 
   function addAlert(alert: Omit<Alert, 'id' | 'acknowledged'>) {
     const newAlert: Alert = {
@@ -858,7 +875,7 @@ export const useIotStore = defineStore('iot', () => {
   }
 
   return {
-    devices, fences, alerts, selectedFenceId, editMode, highlightedDeviceId,
+    devices, fences, alerts, selectedFenceId, editMode, highlightedDeviceId, hoveredDeviceId,
     isRegisteringDevice, registrationLocation, groups,
     onlineCount, offlineCount, alertDeviceCount, deviceCount, fenceCount, alertCount, selectedFence,
     avgBattery, avgTemperature, lowBatteryCount, devicesRanked, recentAlerts,
@@ -871,7 +888,7 @@ export const useIotStore = defineStore('iot', () => {
     deviceHealthList, priorityInspectionList, healthSummary, recentAbnormalRecords,
     getDeviceById, getFenceById, getGroupById, getDeviceHealth,
     acknowledgeAlert, batchAcknowledgeAlerts, acknowledgeAllAlerts,
-    setHighlightedDevice, addAlert, generateMockAlert,
+    setHighlightedDevice, setHoveredDevice, addAlert, generateMockAlert,
     startMockAlertStream, stopMockAlertStream,
     addFence, updateFence, deleteFence, selectFence, setEditMode,
     addDevice, startDeviceRegistration, cancelDeviceRegistration, setRegistrationLocation,

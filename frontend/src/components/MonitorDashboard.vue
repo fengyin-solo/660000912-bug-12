@@ -587,6 +587,7 @@ onUnmounted(() => {
     clearInterval(scrollInterval);
   }
   store.stopMockAlertStream();
-  store.setHighlightedDevice(null);
+  // 只清理临时悬停；明确选中保留，返回主界面后列表与地图仍一致
+  store.setHoveredDevice(null);
 });
 </script>

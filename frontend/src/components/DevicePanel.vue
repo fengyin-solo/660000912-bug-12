@@ -16,14 +16,14 @@
       @mouseenter="handleHover(d.id)"
       @mouseleave="handleHover(null)"
       :style="{ display:'flex', alignItems:'center', gap:'10px', padding:'10px', marginBottom:'8px',
-        borderRadius:'8px', border:'2px solid ' + (store.highlightedDeviceId === d.id ? '#1976d2' : (d.status === 'alert' ? '#ffcc80' : '#e0e0e0')),
-        background: store.highlightedDeviceId === d.id ? '#e3f2fd' : (d.status === 'alert' ? '#fff3e0' : '#fff'),
+        borderRadius:'8px', border:'2px solid ' + (isSelected(d.id) ? '#1976d2' : isHovered(d.id) ? '#90caf9' : (d.status === 'alert' ? '#ffcc80' : '#e0e0e0')),
+        background: isSelected(d.id) ? '#e3f2fd' : isHovered(d.id) ? '#f0f7ff' : (d.status === 'alert' ? '#fff3e0' : '#fff'),
         cursor:'pointer', transition:'all 0.2s ease' }">
       <span :style="{ width:'10px', height:'10px', borderRadius:'50%',
         background: d.status === 'online' ? '#4caf50' : d.status === 'alert' ? '#ff9800' : '#9e9e9e',
-        boxShadow: store.highlightedDeviceId === d.id ? '0 0 0 3px rgba(25,118,210,0.3)' : 'none' }"></span>
+        boxShadow: isSelected(d.id) ? '0 0 0 3px rgba(25,118,210,0.3)' : 'none' }"></span>
       <div style="flex:1">
-        <div style="font-weight: store.highlightedDeviceId === d.id ? 700 : 500;font-size:13px;color:#333;display:flex;align-items:center;gap:6px">
+        <div :style="{ fontWeight: isSelected(d.id) ? 700 : 500, fontSize:'13px', color:'#333', display:'flex', alignItems:'center', gap:'6px' }">
           {{ d.name }}
           <span v-if="d.groupId && getGroup(d.groupId)"
             :style="{ fontSize:'10px', padding:'1px 6px', borderRadius:'8px', background: getGroup(d.groupId)!.color + '20', color: getGroup(d.groupId)!.color }">
@@ -38,6 +38,7 @@
 </template>
 
 <script setup lang="ts">
+import { onUnmounted } from 'vue';
 import { useIotStore } from '../stores/iot';
 const store = useIotStore();
 
@@ -49,13 +50,26 @@ function getGroup(groupId: string) {
   return store.getGroupById(groupId);
 }
 
+function isSelected(id: string) {
+  return store.highlightedDeviceId === id;
+}
+
+function isHovered(id: string) {
+  return store.hoveredDeviceId === id;
+}
+
+// 点击 = 明确选中，持久保持，驱动地图定位与详情
 function handleDeviceClick(id: string) {
   store.setHighlightedDevice(id);
 }
 
+// 悬停 = 临时状态，只写 hoveredDeviceId，不触碰选中状态
 function handleHover(id: string | null) {
-  if (!store.highlightedDeviceId) {
-    store.setHighlightedDevice(id);
-  }
+  store.setHoveredDevice(id);
 }
+
+// 面板卸载时清理可能残留的悬停状态（DOM 移除不会触发 mouseleave）
+onUnmounted(() => {
+  store.setHoveredDevice(null);
+});
 </script>

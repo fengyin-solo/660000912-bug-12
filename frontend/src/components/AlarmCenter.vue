@@ -65,8 +65,8 @@
             @mouseenter="handleHover(alert.deviceId)"
             @mouseleave="handleHover(null)"
             :style="{ display:'flex', alignItems:'flex-start', gap:'10px', padding:'10px', marginBottom:'6px',
-              borderRadius:'8px', border:'1px solid ' + (store.highlightedDeviceId === alert.deviceId ? '#e53935' : '#ffcdd2'),
-              background: store.highlightedDeviceId === alert.deviceId ? '#ffebee' : '#fff',
+              borderRadius:'8px', border:'1px solid ' + (isDeviceActive(alert.deviceId) ? '#e53935' : '#ffcdd2'),
+              background: isDeviceActive(alert.deviceId) ? '#ffebee' : '#fff',
               cursor:'pointer', position:'relative' }">
             <input type="checkbox" v-model="selectedIds" :value="alert.id"
               @click.stop style="marginTop:2px;cursor:pointer">
@@ -102,8 +102,8 @@
             @mouseenter="handleHover(alert.deviceId)"
             @mouseleave="handleHover(null)"
             :style="{ display:'flex', alignItems:'flex-start', gap:'10px', padding:'10px', marginBottom:'6px',
-              borderRadius:'8px', border:'1px solid ' + (store.highlightedDeviceId === alert.deviceId ? '#ff9800' : '#ffe0b2'),
-              background: store.highlightedDeviceId === alert.deviceId ? '#fff3e0' : '#fff',
+              borderRadius:'8px', border:'1px solid ' + (isDeviceActive(alert.deviceId) ? '#ff9800' : '#ffe0b2'),
+              background: isDeviceActive(alert.deviceId) ? '#fff3e0' : '#fff',
               cursor:'pointer', position:'relative' }">
             <input type="checkbox" v-model="selectedIds" :value="alert.id"
               @click.stop style="marginTop:2px;cursor:pointer">
@@ -139,8 +139,8 @@
             @mouseenter="handleHover(alert.deviceId)"
             @mouseleave="handleHover(null)"
             :style="{ display:'flex', alignItems:'flex-start', gap:'10px', padding:'10px', marginBottom:'6px',
-              borderRadius:'8px', border:'1px solid ' + (store.highlightedDeviceId === alert.deviceId ? '#2196f3' : '#bbdefb'),
-              background: store.highlightedDeviceId === alert.deviceId ? '#e3f2fd' : '#fff',
+              borderRadius:'8px', border:'1px solid ' + (isDeviceActive(alert.deviceId) ? '#2196f3' : '#bbdefb'),
+              background: isDeviceActive(alert.deviceId) ? '#e3f2fd' : '#fff',
               cursor:'pointer', position:'relative' }">
             <input type="checkbox" v-model="selectedIds" :value="alert.id"
               @click.stop style="marginTop:2px;cursor:pointer">
@@ -174,8 +174,8 @@
           @mouseenter="handleHover(alert.deviceId)"
           @mouseleave="handleHover(null)"
           :style="{ display:'flex', alignItems:'flex-start', gap:'10px', padding:'10px', marginBottom:'6px',
-            borderRadius:'8px', border:'1px solid ' + (store.highlightedDeviceId === alert.deviceId ? getSeverityColor(alert.severity) : getSeverityBorderColor(alert.severity)),
-            background: store.highlightedDeviceId === alert.deviceId ? getSeverityBgColor(alert.severity) : '#fff',
+            borderRadius:'8px', border:'1px solid ' + (isDeviceActive(alert.deviceId) ? getSeverityColor(alert.severity) : getSeverityBorderColor(alert.severity)),
+            background: isDeviceActive(alert.deviceId) ? getSeverityBgColor(alert.severity) : '#fff',
             cursor:'pointer', position:'relative' }">
           <input type="checkbox" v-model="selectedIds" :value="alert.id"
             @click.stop style="marginTop:2px;cursor:pointer">
@@ -323,12 +323,18 @@ function formatTime(isoString: string): string {
   }
 }
 
+function isDeviceActive(deviceId: string): boolean {
+  return store.highlightedDeviceId === deviceId || store.hoveredDeviceId === deviceId;
+}
+
+// 点击 = 明确选中，持久保持
 function handleAlertClick(alert: Alert) {
   store.setHighlightedDevice(alert.deviceId);
 }
 
+// 悬停 = 临时状态，不影响选中
 function handleHover(deviceId: string | null) {
-  store.setHighlightedDevice(deviceId);
+  store.setHoveredDevice(deviceId);
 }
 
 function handleAcknowledge(id: string) {
@@ -380,6 +386,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   store.stopMockAlertStream();
-  store.setHighlightedDevice(null);
+  // 只清理临时悬停；明确选中跨面板保持，返回后列表与地图仍一致
+  store.setHoveredDevice(null);
 });
 </script>

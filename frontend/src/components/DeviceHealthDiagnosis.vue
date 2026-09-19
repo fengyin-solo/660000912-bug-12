@@ -65,7 +65,7 @@
             <span style="font-size:14px">📱</span>
             <span style="font-weight:600;font-size:13px">{{ selectedDevice.deviceName }}</span>
           </div>
-          <button @click="selectedDevice = null" style="background:none;border:none;cursor:pointer;color:#999;font-size:16px">×</button>
+          <button @click="selectedDeviceId = null" style="background:none;border:none;cursor:pointer;color:#999;font-size:16px">×</button>
         </div>
         <div style="display:flex;gap:12px;margin-bottom:10px">
           <div style="flex:1">
@@ -179,7 +179,7 @@
         @mouseleave="handleHover(null)"
         :style="{ display:'flex', alignItems:'center', gap:'10px', padding:'12px',
           borderRadius:'8px', border:'2px solid ' + getPriorityBorderColor(health),
-          background: store.highlightedDeviceId === health.deviceId ? '#e3f2fd' : '#fff',
+          background: isDeviceActive(health.deviceId) ? '#e3f2fd' : '#fff',
           cursor:'pointer', transition:'all 0.2s ease' }">
         <div :style="{ width:'28px', height:'28px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
           fontSize:'12px', fontWeight:700, flexShrink:0,
@@ -246,7 +246,7 @@
         @mouseleave="handleHover(null)"
         :style="{ display:'flex', alignItems:'flex-start', gap:'10px', padding:'12px',
           borderRadius:'8px', border:'1px solid ' + getSeverityBorderColor(alert.severity),
-          background: store.highlightedDeviceId === alert.deviceId ? getSeverityBgColor(alert.severity) : '#fff',
+          background: isDeviceActive(alert.deviceId) ? getSeverityBgColor(alert.severity) : '#fff',
           cursor:'pointer', transition:'all 0.2s ease' }">
         <span :style="{ fontSize:'18px', flexShrink:0 }">{{ getAlertIcon(alert.type) }}</span>
         <div style="flex:1;min-width:0">
@@ -282,14 +282,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useIotStore } from '../stores/iot';
 import type { DeviceHealth, AlertType, AlertSeverity, Alert, HealthDataPoint } from '../types';
 
 const store = useIotStore();
 
 const activeTab = ref<'overview' | 'priority' | 'records'>('priority');
-const selectedDevice = ref<DeviceHealth | null>(null);
+// 只存设备 id，详情数据实时从 store 派生，保证与列表同步；设备删除后详情自动隐藏
+const selectedDeviceId = ref<string | null>(null);
+const selectedDevice = computed<DeviceHealth | null>(() => {
+  if (!selectedDeviceId.value) return null;
+  return store.getDeviceHealth(selectedDeviceId.value) || null;
+});
 const batteryChartRef = ref<HTMLElement | null>(null);
 const tempChartRef = ref<HTMLElement | null>(null);
 
@@ -300,8 +305,12 @@ const currentHistoryData = computed(() => {
   return store.deviceHealthList[0]?.historyData || [];
 });
 
+function isDeviceActive(deviceId: string): boolean {
+  return store.highlightedDeviceId === deviceId || store.hoveredDeviceId === deviceId;
+}
+
 function handleDeviceClick(health: DeviceHealth) {
-  selectedDevice.value = health;
+  selectedDeviceId.value = health.deviceId;
   store.setHighlightedDevice(health.deviceId);
   activeTab.value = 'overview';
   nextTick(() => {
@@ -310,17 +319,15 @@ function handleDeviceClick(health: DeviceHealth) {
 }
 
 function handleAlertClick(alert: Alert) {
-  const health = store.getDeviceHealth(alert.deviceId);
-  if (health) {
-    selectedDevice.value = health;
+  if (store.getDeviceHealth(alert.deviceId)) {
+    selectedDeviceId.value = alert.deviceId;
   }
   store.setHighlightedDevice(alert.deviceId);
 }
 
+// 悬停 = 临时状态，不影响选中
 function handleHover(deviceId: string | null) {
-  if (!store.highlightedDeviceId) {
-    store.setHighlightedDevice(deviceId);
-  }
+  store.setHoveredDevice(deviceId);
 }
 
 function getHealthScoreColor(score: number): string {
@@ -578,8 +585,8 @@ watch(activeTab, (newTab) => {
 });
 
 onMounted(() => {
-  if (store.deviceHealthList.length > 0 && !selectedDevice.value) {
-    selectedDevice.value = store.deviceHealthList[0];
+  if (store.deviceHealthList.length > 0 && !selectedDeviceId.value) {
+    selectedDeviceId.value = store.deviceHealthList[0].deviceId;
   }
   nextTick(() => {
     renderCharts();
@@ -589,5 +596,10 @@ onMounted(() => {
     renderCharts();
   };
   window.addEventListener('resize', handleResize);
+});
+
+// 面板卸载时清理可能残留的悬停状态（DOM 移除不会触发 mouseleave）
+onUnmounted(() => {
+  store.setHoveredDevice(null);
 });
 </script>

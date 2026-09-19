@@ -565,13 +565,15 @@ function renderAllDevices() {
   deviceLayers.value.clear();
 
   store.devices.forEach(d => {
-    const isHighlighted = store.highlightedDeviceId === d.id;
+    const isSelected = store.highlightedDeviceId === d.id;
+    const isHovered = store.hoveredDeviceId === d.id;
+    const isActive = isSelected || isHovered;
     const color = d.status === 'online' ? '#4caf50' : d.status === 'alert' ? '#e53935' : '#9e9e9e';
     const baseRadius = 8;
-    const radius = isHighlighted ? baseRadius + 6 : baseRadius;
-    const weight = isHighlighted ? 4 : 2;
+    const radius = isActive ? baseRadius + 6 : baseRadius;
+    const weight = isActive ? 4 : 2;
 
-    if (isHighlighted) {
+    if (isSelected) {
       const pulseMarker = L.circleMarker([d.lat, d.lng], {
         radius: radius + 8,
         color: color,
@@ -587,13 +589,13 @@ function renderAllDevices() {
       radius,
       color,
       fillColor: color,
-      fillOpacity: isHighlighted ? 1 : 0.8,
+      fillOpacity: isActive ? 1 : 0.8,
       weight
     })
       .addTo(map.value!)
       .bindPopup(`<b>${d.name}</b><br>状态: ${d.status === 'online' ? '在线' : d.status === 'alert' ? '告警' : '离线'}<br>电量: ${d.battery}%<br>温度: ${d.temperature}°C`);
 
-    if (isHighlighted) {
+    if (isSelected) {
       marker.openPopup();
     }
 
@@ -836,11 +838,17 @@ watch(() => store.devices, () => {
   renderAllDevices();
 }, { deep: true });
 
+// 明确选中变化：重绘并定位地图
 watch(() => store.highlightedDeviceId, (newId, oldId) => {
   renderAllDevices();
   if (newId && newId !== oldId) {
     panToDevice(newId);
   }
+});
+
+// 临时悬停变化：只重绘标记外观，不移动地图、不弹窗
+watch(() => store.hoveredDeviceId, () => {
+  renderAllDevices();
 });
 
 watch(() => store.isRegisteringDevice, (isRegistering) => {
