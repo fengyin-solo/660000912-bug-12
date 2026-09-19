@@ -198,7 +198,8 @@ function handleSubmit() {
   });
 
   store.cancelDeviceRegistration();
-  store.setHighlightedDevice(deviceId);
+  // 注册完成后明确选中新设备
+  store.selectDevice(deviceId);
   emit('registered', deviceId);
 }
 </script>

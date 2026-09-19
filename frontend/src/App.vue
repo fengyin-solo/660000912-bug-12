@@ -99,6 +99,8 @@ const activePanel = ref<'devices' | 'fences' | 'alarms' | 'track' | 'health'>('a
 const isDashboardMode = ref(false);
 
 function handlePanelClick(panel: 'devices' | 'fences' | 'alarms' | 'track' | 'health') {
+  // 切换面板时组件直接卸载，可能收不到 mouseleave，统一清掉临时悬停
+  store.setHoveredDevice(null);
   if (activePanel.value === 'track' && panel !== 'track') {
     store.disableTrackPlayback();
   }
@@ -126,6 +128,7 @@ function handleTrackClose() {
 }
 
 function enterDashboard() {
+  store.setHoveredDevice(null);
   if (activePanel.value === 'track') {
     store.disableTrackPlayback();
   }
@@ -133,6 +136,7 @@ function enterDashboard() {
 }
 
 function exitDashboard() {
+  store.setHoveredDevice(null);
   isDashboardMode.value = false;
 }
 </script>

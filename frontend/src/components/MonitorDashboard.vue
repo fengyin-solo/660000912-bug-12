@@ -192,8 +192,8 @@
             <div v-for="(device, index) in store.devicesRanked" :key="device.id"
               @click="handleDeviceClick(device.id)"
               class="device-rank-item"
-              :class="{ 'device-rank-item-active': store.highlightedDeviceId === device.id }"
-              :style="{ borderColor: store.highlightedDeviceId === device.id ? '#4fc3f7' : '#1e3a5f' }">
+              :class="{ 'device-rank-item-active': store.selectedDeviceId === device.id }"
+              :style="{ borderColor: store.selectedDeviceId === device.id ? '#4fc3f7' : '#1e3a5f' }">
               <div :style="{ width:'24px', height:'24px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
                 fontSize:'12px', fontWeight:700,
                 background: index < 3 ? (index === 0 ? '#f44336' : index === 1 ? '#ff9800' : '#ffb300') : '#1e3a5f',
@@ -355,7 +355,7 @@ function formatTime(isoString: string): string {
 }
 
 function handleDeviceClick(id: string) {
-  store.setHighlightedDevice(id);
+  store.selectDevice(id);
   panToDevice(id);
 }
 
@@ -413,7 +413,9 @@ function renderAllDevices() {
   deviceLayers.value.clear();
 
   store.devices.forEach(d => {
-    const isHighlighted = store.highlightedDeviceId === d.id;
+    const isSelected = store.selectedDeviceId === d.id;
+    const isHovered = store.hoveredDeviceId === d.id;
+    const isHighlighted = isSelected || isHovered;
     const color = d.status === 'online' ? '#4caf50' : d.status === 'alert' ? '#ff9800' : '#9e9e9e';
     const baseRadius = 10;
     const radius = isHighlighted ? baseRadius + 8 : baseRadius;
@@ -442,7 +444,8 @@ function renderAllDevices() {
       .addTo(map.value!)
       .bindPopup(`<b>${d.name}</b><br>状态: ${d.status === 'online' ? '在线' : d.status === 'alert' ? '告警' : '离线'}<br>电量: ${d.battery}%<br>温度: ${d.temperature}°C`, { className: 'dark-popup' });
 
-    if (isHighlighted) {
+    // 弹窗只跟随明确选中
+    if (isSelected) {
       marker.openPopup();
     }
 
@@ -470,10 +473,21 @@ watch(() => store.devices, () => {
   lastUpdate.value = new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }, { deep: true });
 
-watch(() => store.highlightedDeviceId, (newId) => {
+// 悬停只重绘外观；选中才平移并弹窗
+watch(() => store.hoveredDeviceId, () => {
+  renderAllDevices();
+});
+
+watch(() => store.selectedDeviceId, (newId) => {
   renderAllDevices();
   if (newId) {
     panToDevice(newId);
+  }
+});
+
+watch(() => store.locateNonce, () => {
+  if (store.selectedDeviceId) {
+    panToDevice(store.selectedDeviceId);
   }
 });
 
@@ -587,6 +601,7 @@ onUnmounted(() => {
     clearInterval(scrollInterval);
   }
   store.stopMockAlertStream();
-  store.setHighlightedDevice(null);
+  // 退出大屏只清临时悬停，明确选中保留，返回主界面仍一致
+  store.setHoveredDevice(null);
 });
 </script>

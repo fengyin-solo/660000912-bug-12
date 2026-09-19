@@ -565,13 +565,15 @@ function renderAllDevices() {
   deviceLayers.value.clear();
 
   store.devices.forEach(d => {
-    const isHighlighted = store.highlightedDeviceId === d.id;
+    const isHovered = store.hoveredDeviceId === d.id;
+    const isSelected = store.selectedDeviceId === d.id;
+    const isHighlighted = isHovered || isSelected;
     const color = d.status === 'online' ? '#4caf50' : d.status === 'alert' ? '#e53935' : '#9e9e9e';
     const baseRadius = 8;
     const radius = isHighlighted ? baseRadius + 6 : baseRadius;
     const weight = isHighlighted ? 4 : 2;
 
-    if (isHighlighted) {
+    if (isSelected) {
       const pulseMarker = L.circleMarker([d.lat, d.lng], {
         radius: radius + 8,
         color: color,
@@ -593,7 +595,8 @@ function renderAllDevices() {
       .addTo(map.value!)
       .bindPopup(`<b>${d.name}</b><br>状态: ${d.status === 'online' ? '在线' : d.status === 'alert' ? '告警' : '离线'}<br>电量: ${d.battery}%<br>温度: ${d.temperature}°C`);
 
-    if (isHighlighted) {
+    // 弹窗只跟随明确选中，悬停不抢占，避免列表与详情目标错位
+    if (isSelected) {
       marker.openPopup();
     }
 
@@ -834,12 +837,30 @@ watch(() => store.editMode, (newMode) => {
 
 watch(() => store.devices, () => {
   renderAllDevices();
+  // 设备列表变化（刷新/删除/新增）后，选中设备仍存在时重新定位，保证列表与地图同步
+  const selectedId = store.selectedDeviceId;
+  if (selectedId && store.getDeviceById(selectedId)) {
+    panToDevice(selectedId);
+  }
 }, { deep: true });
 
-watch(() => store.highlightedDeviceId, (newId, oldId) => {
+// 悬停变化只重绘标记外观（不弹窗、不平移）
+watch(() => store.hoveredDeviceId, () => {
+  renderAllDevices();
+});
+
+// 明确选中变化才弹窗（renderAllDevices 内处理）并平移定位
+watch(() => store.selectedDeviceId, (newId, oldId) => {
   renderAllDevices();
   if (newId && newId !== oldId) {
     panToDevice(newId);
+  }
+});
+
+// 详情卡“定位”：同一设备重复点击也会平移
+watch(() => store.locateNonce, () => {
+  if (store.selectedDeviceId) {
+    panToDevice(store.selectedDeviceId);
   }
 });
 

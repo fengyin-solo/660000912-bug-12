@@ -179,7 +179,7 @@
         @mouseleave="handleHover(null)"
         :style="{ display:'flex', alignItems:'center', gap:'10px', padding:'12px',
           borderRadius:'8px', border:'2px solid ' + getPriorityBorderColor(health),
-          background: store.highlightedDeviceId === health.deviceId ? '#e3f2fd' : '#fff',
+          background: store.activeHighlightDeviceId === health.deviceId ? '#e3f2fd' : '#fff',
           cursor:'pointer', transition:'all 0.2s ease' }">
         <div :style="{ width:'28px', height:'28px', borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center',
           fontSize:'12px', fontWeight:700, flexShrink:0,
@@ -246,7 +246,7 @@
         @mouseleave="handleHover(null)"
         :style="{ display:'flex', alignItems:'flex-start', gap:'10px', padding:'12px',
           borderRadius:'8px', border:'1px solid ' + getSeverityBorderColor(alert.severity),
-          background: store.highlightedDeviceId === alert.deviceId ? getSeverityBgColor(alert.severity) : '#fff',
+          background: store.activeHighlightDeviceId === alert.deviceId ? getSeverityBgColor(alert.severity) : '#fff',
           cursor:'pointer', transition:'all 0.2s ease' }">
         <span :style="{ fontSize:'18px', flexShrink:0 }">{{ getAlertIcon(alert.type) }}</span>
         <div style="flex:1;min-width:0">
@@ -282,7 +282,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, nextTick } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue';
 import { useIotStore } from '../stores/iot';
 import type { DeviceHealth, AlertType, AlertSeverity, Alert, HealthDataPoint } from '../types';
 
@@ -302,7 +302,7 @@ const currentHistoryData = computed(() => {
 
 function handleDeviceClick(health: DeviceHealth) {
   selectedDevice.value = health;
-  store.setHighlightedDevice(health.deviceId);
+  store.selectDevice(health.deviceId);
   activeTab.value = 'overview';
   nextTick(() => {
     renderCharts();
@@ -314,13 +314,12 @@ function handleAlertClick(alert: Alert) {
   if (health) {
     selectedDevice.value = health;
   }
-  store.setHighlightedDevice(alert.deviceId);
+  store.selectDevice(alert.deviceId);
 }
 
 function handleHover(deviceId: string | null) {
-  if (!store.highlightedDeviceId) {
-    store.setHighlightedDevice(deviceId);
-  }
+  // 仅临时悬停，不改动明确选中
+  store.setHoveredDevice(deviceId);
 }
 
 function getHealthScoreColor(score: number): string {
@@ -569,6 +568,24 @@ watch(selectedDevice, () => {
   });
 });
 
+// 详情与全局选中保持一致：其它面板/告警/列表改变选中时，这里同步切换
+watch(() => store.selectedDeviceId, (deviceId) => {
+  if (!deviceId) {
+    selectedDevice.value = null;
+    return;
+  }
+  if (selectedDevice.value?.deviceId !== deviceId) {
+    selectedDevice.value = store.getDeviceHealth(deviceId) || null;
+  }
+});
+
+// 设备被删除后健康列表重算，详情不能残留旧目标
+watch(() => store.deviceHealthList, (list) => {
+  if (selectedDevice.value && !list.some(h => h.deviceId === selectedDevice.value!.deviceId)) {
+    selectedDevice.value = null;
+  }
+});
+
 watch(activeTab, (newTab) => {
   if (newTab === 'overview') {
     nextTick(() => {
@@ -578,7 +595,11 @@ watch(activeTab, (newTab) => {
 });
 
 onMounted(() => {
-  if (store.deviceHealthList.length > 0 && !selectedDevice.value) {
+  // 优先恢复全局选中设备的详情，其次才回落列表第一项，保证返回后与列表/地图一致
+  const stored = store.selectedDeviceId ? store.getDeviceHealth(store.selectedDeviceId) : undefined;
+  if (stored) {
+    selectedDevice.value = stored;
+  } else if (store.deviceHealthList.length > 0 && !selectedDevice.value) {
     selectedDevice.value = store.deviceHealthList[0];
   }
   nextTick(() => {
@@ -589,5 +610,10 @@ onMounted(() => {
     renderCharts();
   };
   window.addEventListener('resize', handleResize);
+});
+
+onUnmounted(() => {
+  // 只清临时悬停，明确选中保留
+  store.setHoveredDevice(null);
 });
 </script>

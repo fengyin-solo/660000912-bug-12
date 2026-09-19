@@ -6,6 +6,28 @@ function generateId(prefix: string) {
   return prefix + Date.now() + Math.random().toString(36).slice(2, 6);
 }
 
+const SELECTED_DEVICE_STORAGE_KEY = 'iot-selected-device-id';
+
+function loadSelectedDeviceId(): string | null {
+  try {
+    return localStorage.getItem(SELECTED_DEVICE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function persistSelectedDeviceId(id: string | null) {
+  try {
+    if (id) {
+      localStorage.setItem(SELECTED_DEVICE_STORAGE_KEY, id);
+    } else {
+      localStorage.removeItem(SELECTED_DEVICE_STORAGE_KEY);
+    }
+  } catch {
+    // localStorage 不可用时静默降级，仅保留内存状态
+  }
+}
+
 export const useIotStore = defineStore('iot', () => {
   const devices = ref<Device[]>([
     { id: 'd1', name: '传感器-A01', lat: 39.9042, lng: 116.4074, status: 'online', lastSeen: new Date().toISOString(), battery: 85, temperature: 24.5 },
@@ -57,7 +79,19 @@ export const useIotStore = defineStore('iot', () => {
   ]);
   const selectedFenceId = ref<string | null>(null);
   const editMode = ref<'none' | 'draw-circle' | 'draw-polygon' | 'edit'>('none');
-  const highlightedDeviceId = ref<string | null>(null);
+  // 明确选中的设备（点击产生），跨面板切换/刷新/返回保持一致；
+  // 持久化的 id 若已不在设备列表（数据重置等），视为无效并清理，避免悬空旧目标
+  const initialSelectedId = loadSelectedDeviceId();
+  const selectedDeviceId = ref<string | null>(
+    initialSelectedId && devices.value.some(d => d.id === initialSelectedId) ? initialSelectedId : null
+  );
+  if (initialSelectedId && selectedDeviceId.value === null) {
+    persistSelectedDeviceId(null);
+  }
+  // 鼠标临时悬停的设备，仅用于列表与标记的临时高亮，离开即清除，不影响选中
+  const hoveredDeviceId = ref<string | null>(null);
+  // 定位请求序号：每次定位 +1，即使目标未变地图也会重新平移
+  const locateNonce = ref(0);
   const isRegisteringDevice = ref(false);
   const registrationLocation = ref<{ lat: number; lng: number } | null>(null);
 
@@ -88,6 +122,21 @@ export const useIotStore = defineStore('iot', () => {
   const fenceCount = computed(() => fences.value.length);
   const alertCount = computed(() => alerts.value.filter(a => !a.acknowledged).length);
   const selectedFence = computed(() => fences.value.find(f => f.id === selectedFenceId.value) || null);
+
+  // 当前视觉高亮：临时悬停优先，否则回落到明确选中；已不存在的设备不参与高亮
+  const activeHighlightDeviceId = computed(() => {
+    const candidate = hoveredDeviceId.value ?? selectedDeviceId.value;
+    return candidate && devices.value.some(d => d.id === candidate) ? candidate : null;
+  });
+  // 仅明确选中（地图定位/弹窗、详情同步以它为准，悬停不触发）
+  const highlightedDeviceId = computed(() =>
+    selectedDeviceId.value && devices.value.some(d => d.id === selectedDeviceId.value)
+      ? selectedDeviceId.value
+      : null
+  );
+  const selectedDevice = computed(() =>
+    selectedDeviceId.value ? devices.value.find(d => d.id === selectedDeviceId.value) || null : null
+  );
 
   const avgBattery = computed(() => {
     const onlineDevices = devices.value.filter(d => d.status !== 'offline');
@@ -170,8 +219,29 @@ export const useIotStore = defineStore('iot', () => {
     });
   }
 
+  function selectDevice(id: string | null) {
+    if (id !== null && !devices.value.some(d => d.id === id)) return;
+    selectedDeviceId.value = id;
+    // 明确选中后清除可能停留的悬停态，避免视觉残留
+    hoveredDeviceId.value = null;
+    persistSelectedDeviceId(id);
+  }
+
+  // 兼容既有调用：点击/跳转等“明确选中”语义统一走 selectDevice
   function setHighlightedDevice(id: string | null) {
-    highlightedDeviceId.value = id;
+    selectDevice(id);
+  }
+
+  // 临时悬停：mouseenter 传设备 id，mouseleave 传 null；不改动明确选中
+  function setHoveredDevice(id: string | null) {
+    hoveredDeviceId.value = id;
+  }
+
+  // 请求将地图定位到指定设备（不传则定位当前选中），每次调用都触发一次平移
+  function locateSelectedDevice(deviceId?: string | null) {
+    const target = deviceId ?? selectedDeviceId.value;
+    if (!target || !devices.value.some(d => d.id === target)) return;
+    locateNonce.value++;
   }
 
   function addAlert(alert: Omit<Alert, 'id' | 'acknowledged'>) {
@@ -273,6 +343,25 @@ export const useIotStore = defineStore('iot', () => {
     };
     devices.value.push(newDevice);
     return id;
+  }
+
+  function deleteDevice(id: string) {
+    const idx = devices.value.findIndex(d => d.id === id);
+    if (idx === -1) return;
+
+    devices.value.splice(idx, 1);
+
+    // 删除后清理所有指向该设备的引用，避免旧目标/残留高亮
+    if (selectedDeviceId.value === id) {
+      selectDevice(null);
+    }
+    if (hoveredDeviceId.value === id) {
+      hoveredDeviceId.value = null;
+    }
+    alerts.value = alerts.value.filter(a => a.deviceId !== id);
+    if (playbackDeviceId.value === id) {
+      disableTrackPlayback();
+    }
   }
 
   function getGroupById(id: string) {
@@ -858,7 +947,9 @@ export const useIotStore = defineStore('iot', () => {
   }
 
   return {
-    devices, fences, alerts, selectedFenceId, editMode, highlightedDeviceId,
+    devices, fences, alerts, selectedFenceId, editMode,
+    selectedDeviceId, hoveredDeviceId, activeHighlightDeviceId, highlightedDeviceId, selectedDevice,
+    locateNonce,
     isRegisteringDevice, registrationLocation, groups,
     onlineCount, offlineCount, alertDeviceCount, deviceCount, fenceCount, alertCount, selectedFence,
     avgBattery, avgTemperature, lowBatteryCount, devicesRanked, recentAlerts,
@@ -869,12 +960,12 @@ export const useIotStore = defineStore('iot', () => {
     isPlaying, playbackSpeed, showTrack, showStayPoints, showBreachEvents,
     playbackCurrentPoint, playbackProgress, playbackCurrentTime,
     deviceHealthList, priorityInspectionList, healthSummary, recentAbnormalRecords,
-    getDeviceById, getFenceById, getGroupById, getDeviceHealth,
+    getDeviceById, getFenceById, getGroupById, getDeviceHealth, getDeviceAlertsCount,
     acknowledgeAlert, batchAcknowledgeAlerts, acknowledgeAllAlerts,
-    setHighlightedDevice, addAlert, generateMockAlert,
+    selectDevice, setHighlightedDevice, setHoveredDevice, locateSelectedDevice, addAlert, generateMockAlert,
     startMockAlertStream, stopMockAlertStream,
     addFence, updateFence, deleteFence, selectFence, setEditMode,
-    addDevice, startDeviceRegistration, cancelDeviceRegistration, setRegistrationLocation,
+    addDevice, deleteDevice, startDeviceRegistration, cancelDeviceRegistration, setRegistrationLocation,
     loadTrackData, startPlayback, pausePlayback, stopPlayback,
     seekToIndex, seekToProgress, setPlaybackSpeed,
     jumpToStayPoint, jumpToBreachEvent,
